@@ -77,6 +77,9 @@
 
 #include "source-pcap-file.h"
 
+#include <mysql.h>
+#include <my_global.h>
+
 //#define DEBUG
 
 #define STREAMTCP_DEFAULT_PREALLOC              2048
@@ -99,6 +102,7 @@ void StreamTcpReturnStreamSegments (TcpStream *);
 void StreamTcpInitConfig(char);
 int StreamTcpGetFlowState(void *);
 void StreamTcpSetOSPolicy(TcpStream*, Packet*);
+void StreamTcpPseudoPacketCreateStreamEndPacket(ThreadVars *tv, StreamTcpThread *stt, Packet *p, TcpSession *ssn, PacketQueue *pq);
 
 static int StreamTcpValidateTimestamp(TcpSession * , Packet *);
 static int StreamTcpHandleTimestamp(TcpSession * , Packet *);
@@ -724,12 +728,124 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
         if (PKT_IS_TOSERVER(p)) {
             ssn->client.tcp_flags = p->tcph ? p->tcph->th_flags : 0;
             ssn->server.tcp_flags = 0;
-        } else if (PKT_IS_TOCLIENT(p)) {
-            ssn->server.tcp_flags = p->tcph ? p->tcph->th_flags : 0;
-            ssn->client.tcp_flags = 0;
-        }
+
+			// My initial guess is that ssn == NULL only occurs for new connections.
+			// Additionally, we only wish to check the 
+			// Construct mysql connection
+			MYSQL *mysql_con = mysql_init(NULL);
+			if (mysql_con == NULL) 
+			{
+				fprintf(stderr, "%s\n", mysql_error(mysql_con));
+				// NEED TO DETERMINE HOW TO HANDLE A CONSTRUCTION ERROR
+				SCLogDebug("failed to construct mysql ipaddress server handle");
+				return NULL;
+			}
+			
+			// Connect to local mysql database. Requires root
+			if (mysql_real_connect(con, "localhost", "root", "password", 
+				  NULL, 0, NULL, 0) == NULL) 
+			{
+				fprintf(stderr, "%s\n", mysql_error(mysql_con));
+				mysql_close(mysql_con);
+				// NEED TO DETERMINE HOW TO HANDLE A CONNECTION ERROR
+				SCLogDebug("failed to connect to mysql ipaddress server");
+				return NULL;
+			}
+
+			// Create database 
+			if (mysql_query(mysql_con, "CREATE DATABASE IF NOT EXISTS dnslookup;")) 
+			{
+				fprintf(stderr, "%s\n", mysql_error(mysql_con));
+				mysql_close(mysql_con);
+				return NULL;
+			}
+			
+			// Use database. This should not throw error if above worked correctly
+			if (mysql_query(mysql_con, "USE dnslookup;"))
+			{
+				fprintf(stderr, "%s\n", mysql_error(mysql_con));
+				mysql_close(mysql_con);
+				SCLogDebug("failed to connect to use database");
+				return NULL;
+			}
+
+			// Create table 
+			if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses (ipaddress BIGINT, PRIMARY KEY (ipaddress));")) 
+			{
+				fprintf(stderr, "%s\n", mysql_error(mysql_con));
+				mysql_close(mysql_con);
+				return NULL;
+			}
+
+			// Load table into memory table to speed up checks
+			if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses_mem (ipaddress BIGINT, PRIMARY KEY (ipaddress)) ENGINE = MEMORY AS SELECT * FROM ipaddresses;")) 
+			{
+				fprintf(stderr, "%s\n", mysql_error(mysql_con));
+				mysql_close(mysql_con);
+				exit(1);
+			}
+
+			// Construct query
+			int mysql_buffer_padding = 34;
+			uint32_t addr = (uint32_t)p->dst->address;
+			char * query_ = "SELECT * FROM ipaddresses_mem WHERE ipaddress = ";
+			int quer_len = strlen(query_);
+			char query[quer_len + mysql_buffer_padding];
+			snprintf(query, quer_len + mysql_buffer_padding, "%s%d;", query_, addr);
+
+			// Make query
+			if (mysql_query(mysql_con, query)){
+				fprintf(stderr, "%s\n", mysql_error(mysql_con));
+				mysql_close(mysql_con);
+				return NULL;
+			}
+
+			// Get result of query
+			MYSQL_RES *result = mysql_store_result(mysql_con);
+			int num_rows = mysql_num_rows(result);
+			if (num_rows == 0){                                                                // Query miss
+				fprintf(stderr, "Address not found\n");
+				char * query_ = "INSERT INTO ipaddresses_mem VALUES (";
+				snprintf(query, quer_len + mysql_buffer_padding, "%s%d);", query_, addr);
+				if (mysql_query(mysql_con, query)) 
+				{
+					fprintf(stderr, "%s\n", mysql_error(mysql_con));
+					mysql_close(mysql_con);
+					return NULL;
+				}
+				// Need to insert into both tables if query miss
+				query_ = "INSERT INTO ipaddresses_mem VALUES (";
+				snprintf(query, quer_len + 34, "%s%d);", query_, addr);
+				if (mysql_query(mysql_con, query)) 
+				{
+					fprintf(stderr, "%s\n", mysql_error(mysql_con));
+					mysql_close(mysql_con);
+					exit(1);
+				}
+				fprintf(stderr, "Insert successful\n");
+
+			} else {                                                                           // Query hit
+				fprintf(stderr, "Address in table\n");
+				MYSQL_ROW row;
+				int num_fields = mysql_num_fields(result);
+				while ((row = mysql_fetch_row(result))) 
+				{ 
+					for(int i = 0; i < num_fields; i++) 
+					{ 
+						printf("%s ", row[i] ? row[i] : "NULL"); 
+					} 
+						printf("\n"); 
+				}
+			}
+		
+	    } else if (PKT_IS_TOCLIENT(p)) {
+	        ssn->server.tcp_flags = p->tcph ? p->tcph->th_flags : 0;
+	        ssn->client.tcp_flags = 0;
+	    }
     }
 
+	// Close local mysql db connection
+	mysql_close(mysql_con);
     return ssn;
 }
 
@@ -5928,6 +6044,121 @@ Packet *StreamTcpPseudoSetup(Packet *parent, uint8_t *pkt, uint32_t len)
     return p;
 }
 
+/**
+ * \brief   Function to setup the IP and TCP header of the pseudo packet from
+ *          the newly copied raw packet contents of the parent.
+ *
+ * @param np    pointer to the pseudo packet
+ * @param p     pointer to the original packet
+ */
+static void StreamTcpPseudoPacketSetupHeader(Packet *np, Packet *p)
+{
+    /* Setup the IP header */
+    if (PKT_IS_IPV4(p)) {
+        np->ip4h = (IPV4Hdr *)((uint8_t *)GET_PKT_DATA(np) + (GET_PKT_LEN(np) - IPV4_GET_IPLEN(p)));
+        PSEUDO_PKT_SET_IPV4HDR(np->ip4h, p->ip4h);
+
+        /* Similarly setup the TCP header with ports in opposite direction */
+        np->tcph = (TCPHdr *)((uint8_t *)np->ip4h + IPV4_GET_HLEN(np));
+
+        PSEUDO_PKT_SET_TCPHDR(np->tcph, p->tcph);
+
+        /* Setup the adress and port details */
+        SET_IPV4_SRC_ADDR(p, &np->dst);
+        SET_IPV4_DST_ADDR(p, &np->src);
+        SET_TCP_SRC_PORT(p, &np->dp);
+        SET_TCP_DST_PORT(p, &np->sp);
+
+    } else if (PKT_IS_IPV6(p)) {
+        np->ip6h = (IPV6Hdr *)((uint8_t *)GET_PKT_DATA(np) + (GET_PKT_LEN(np) - IPV6_GET_PLEN(p) - IPV6_HEADER_LEN));
+        PSEUDO_PKT_SET_IPV6HDR(np->ip6h, p->ip6h);
+
+        /* Similarly setup the TCP header with ports in opposite direction */
+        np->tcph = (TCPHdr *)((uint8_t *)np->ip6h + IPV6_HEADER_LEN);
+        PSEUDO_PKT_SET_TCPHDR(np->tcph, p->tcph);
+
+        /* Setup the adress and port details */
+        SET_IPV6_SRC_ADDR(p, &np->dst);
+        SET_IPV6_DST_ADDR(p, &np->src);
+        SET_TCP_SRC_PORT(p, &np->dp);
+        SET_TCP_DST_PORT(p, &np->sp);
+    }
+
+    /* we don't need a payload (if any) */
+    np->payload = NULL;
+    np->payload_len = 0;
+}
+
+/** \brief Create a pseudo packet injected into the engine to signal the
+ *         opposing direction of this stream to wrap up stream reassembly.
+ *
+ *  \param p real packet
+ *  \param pq packet queue to store the new pseudo packet in
+ */
+void StreamTcpPseudoPacketCreateStreamEndPacket(ThreadVars *tv, StreamTcpThread *stt, Packet *p, TcpSession *ssn, PacketQueue *pq)
+{
+    SCEnter();
+
+    if (p->flags & PKT_PSEUDO_STREAM_END) {
+        SCReturn;
+    }
+
+    /* no need for a pseudo packet if there is nothing left to reassemble */
+    if (RB_EMPTY(&ssn->server.seg_tree) && RB_EMPTY(&ssn->client.seg_tree)) {
+        SCReturn;
+    }
+
+    Packet *np = StreamTcpPseudoSetup(p, GET_PKT_DATA(p), GET_PKT_LEN(p));
+    if (np == NULL) {
+        SCLogDebug("The packet received from packet allocation is NULL");
+        StatsIncr(tv, stt->counter_tcp_pseudo_failed);
+        SCReturn;
+    }
+    PKT_SET_SRC(np, PKT_SRC_STREAM_TCP_STREAM_END_PSEUDO);
+
+    /* Setup the IP and TCP headers */
+    StreamTcpPseudoPacketSetupHeader(np,p);
+
+    np->tenant_id = p->flow->tenant_id;
+
+    np->flowflags = p->flowflags;
+
+    np->flags |= PKT_STREAM_EST;
+    np->flags |= PKT_STREAM_EOF;
+    np->flags |= PKT_HAS_FLOW;
+    np->flags |= PKT_PSEUDO_STREAM_END;
+
+    if (p->flags & PKT_NOPACKET_INSPECTION) {
+        DecodeSetNoPacketInspectionFlag(np);
+    }
+    if (p->flags & PKT_NOPAYLOAD_INSPECTION) {
+        DecodeSetNoPayloadInspectionFlag(np);
+    }
+
+    if (PKT_IS_TOSERVER(p)) {
+        SCLogDebug("original is to_server, so pseudo is to_client");
+        np->flowflags &= ~FLOW_PKT_TOSERVER;
+        np->flowflags |= FLOW_PKT_TOCLIENT;
+#ifdef DEBUG
+        BUG_ON(!(PKT_IS_TOCLIENT(np)));
+        BUG_ON((PKT_IS_TOSERVER(np)));
+#endif
+    } else if (PKT_IS_TOCLIENT(p)) {
+        SCLogDebug("original is to_client, so pseudo is to_server");
+        np->flowflags &= ~FLOW_PKT_TOCLIENT;
+        np->flowflags |= FLOW_PKT_TOSERVER;
+#ifdef DEBUG
+        BUG_ON(!(PKT_IS_TOSERVER(np)));
+        BUG_ON((PKT_IS_TOCLIENT(np)));
+#endif
+    }
+
+    PacketEnqueue(pq, np);
+
+    StatsIncr(tv, stt->counter_tcp_pseudo);
+    SCReturn;
+}
+
 /** \brief Create a pseudo packet injected into the engine to signal the
  *         opposing direction of this stream trigger detection/logging.
  *
@@ -10180,6 +10411,119 @@ end:
     return ret;
 }
 
+static int StreamTcpTest40(void)
+{
+    uint8_t raw_vlan[] = {
+        0x00, 0x20, 0x08, 0x00, 0x45, 0x00, 0x00, 0x34,
+        0x3b, 0x36, 0x40, 0x00, 0x40, 0x06, 0xb7, 0xc9,
+        0x83, 0x97, 0x20, 0x81, 0x83, 0x97, 0x20, 0x15,
+        0x04, 0x8a, 0x17, 0x70, 0x4e, 0x14, 0xdf, 0x55,
+        0x4d, 0x3d, 0x5a, 0x61, 0x80, 0x10, 0x6b, 0x50,
+        0x3c, 0x4c, 0x00, 0x00, 0x01, 0x01, 0x08, 0x0a,
+        0x00, 0x04, 0xf0, 0xc8, 0x01, 0x99, 0xa3, 0xf3
+    };
+    Packet *p = SCMalloc(SIZE_OF_PACKET);
+    FAIL_IF(unlikely(p == NULL));
+    ThreadVars tv;
+    DecodeThreadVars dtv;
+
+    memset(&tv, 0, sizeof(ThreadVars));
+    memset(p, 0, SIZE_OF_PACKET);
+    PACKET_INITIALIZE(p);
+
+    SET_PKT_LEN(p, sizeof(raw_vlan));
+    memcpy(GET_PKT_DATA(p), raw_vlan, sizeof(raw_vlan));
+    memset(&dtv, 0, sizeof(DecodeThreadVars));
+
+    FlowInitConfig(FLOW_QUIET);
+
+    DecodeVLAN(&tv, &dtv, p, GET_PKT_DATA(p), GET_PKT_LEN(p), NULL);
+
+    FAIL_IF(p->vlan_id[0] == 0);
+
+    FAIL_IF(p->tcph == NULL);
+
+    Packet *np = StreamTcpPseudoSetup(p, GET_PKT_DATA(p), GET_PKT_LEN(p));
+    FAIL_IF(np == NULL);
+
+    StreamTcpPseudoPacketSetupHeader(np,p);
+
+    FAIL_IF(((uint8_t *)p->tcph - (uint8_t *)p->ip4h) != ((uint8_t *)np->tcph - (uint8_t *)np->ip4h));
+
+    PACKET_DESTRUCTOR(np);
+    PACKET_DESTRUCTOR(p);
+    FlowShutdown();
+    PacketFree(np);
+    PacketFree(p);
+    PASS;
+}
+
+static int StreamTcpTest41(void)
+{
+    /* IPV6/TCP/no eth header */
+    uint8_t raw_ip[] = {
+        0x60, 0x00, 0x00, 0x00, 0x00, 0x28, 0x06, 0x40,
+        0x20, 0x01, 0x06, 0x18, 0x04, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x51, 0x99, 0xcc, 0x70,
+        0x20, 0x01, 0x06, 0x18, 0x00, 0x01, 0x80, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x05,
+        0x8c, 0x9b, 0x00, 0x50, 0x6a, 0xe7, 0x07, 0x36,
+        0x00, 0x00, 0x00, 0x00, 0xa0, 0x02, 0x16, 0x30,
+        0x29, 0x9c, 0x00, 0x00, 0x02, 0x04, 0x05, 0x8c,
+        0x04, 0x02, 0x08, 0x0a, 0x00, 0xdd, 0x1a, 0x39,
+        0x00, 0x00, 0x00, 0x00, 0x01, 0x03, 0x03, 0x02 };
+    Packet *p = SCMalloc(SIZE_OF_PACKET);
+    if (unlikely(p == NULL))
+        return 0;
+    ThreadVars tv;
+    DecodeThreadVars dtv;
+
+    memset(&dtv, 0, sizeof(DecodeThreadVars));
+    memset(&tv,  0, sizeof(ThreadVars));
+    memset(p, 0, SIZE_OF_PACKET);
+    PACKET_INITIALIZE(p);
+
+    if (PacketCopyData(p, raw_ip, sizeof(raw_ip)) == -1) {
+        PacketFree(p);
+        return 1;
+    }
+
+    FlowInitConfig(FLOW_QUIET);
+
+    DecodeRaw(&tv, &dtv, p, raw_ip, GET_PKT_LEN(p), NULL);
+
+    if (p->ip6h == NULL) {
+        printf("expected a valid ipv6 header but it was NULL: ");
+        FlowShutdown();
+        SCFree(p);
+        return 1;
+    }
+
+    if(p->tcph == NULL) {
+        SCFree(p);
+        return 0;
+    }
+
+    Packet *np = StreamTcpPseudoSetup(p, GET_PKT_DATA(p), GET_PKT_LEN(p));
+    if (np == NULL) {
+        printf("the packet received from packet allocation is NULL: ");
+        return 0;
+    }
+
+    StreamTcpPseudoPacketSetupHeader(np,p);
+
+    if (((uint8_t *)p->tcph - (uint8_t *)p->ip6h) != ((uint8_t *)np->tcph - (uint8_t *)np->ip6h)) {
+        return 0;
+    }
+
+    PACKET_RECYCLE(np);
+    PACKET_RECYCLE(p);
+    SCFree(p);
+    FlowShutdown();
+
+    return 1;
+}
+
 /** \test multiple different SYN/ACK, pick first */
 static int StreamTcpTest42 (void)
 {
@@ -10629,6 +10973,9 @@ void StreamTcpRegisterTests (void)
 
     UtRegisterTest("StreamTcpTest38 -- validate ACK", StreamTcpTest38);
     UtRegisterTest("StreamTcpTest39 -- update next_seq", StreamTcpTest39);
+
+    UtRegisterTest("StreamTcpTest40 -- pseudo setup", StreamTcpTest40);
+    UtRegisterTest("StreamTcpTest41 -- pseudo setup", StreamTcpTest41);
 
     UtRegisterTest("StreamTcpTest42 -- SYN/ACK queue", StreamTcpTest42);
     UtRegisterTest("StreamTcpTest43 -- SYN/ACK queue", StreamTcpTest43);

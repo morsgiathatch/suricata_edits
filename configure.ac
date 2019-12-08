@@ -2477,6 +2477,12 @@ if test "${enable_ebpf}" = "yes" || test "${enable_nfqueue}" = "yes" || test "${
   AC_DEFINE([CAPTURE_OFFLOAD], [1],[Building flow capture bypass code])
 fi
 
+# HERE ARE MY HACKY EDITS TO GET THE SOFTWARE TO BUILD
+# DEFINITELY NEED TO MAKE IT MORE SOPHISTICATED LIKE THE ABOVE
+# TESTS BUT SUFFICIENT FOR NOW.
+CFLAGS="${CFLAGS} `mysql_config --cflags`"
+LDFLAGS="${LDFLAGS} `mysql_config --libs`"
+
 AC_SUBST(CFLAGS)
 AC_SUBST(LDFLAGS)
 AC_SUBST(CPPFLAGS)
