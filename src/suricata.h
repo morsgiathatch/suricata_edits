@@ -199,6 +199,8 @@ void PostRunDeinit(const int runmode, struct timeval *start_time);
 void RegisterAllModules(void);
 
 const char *GetProgramVersion(void);
+void InitializeMySQLServerConnection(void);
+int CloseMySQLServerConnection(void);
 
 #endif /* __SURICATA_H__ */
 

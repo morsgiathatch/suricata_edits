@@ -22,7 +22,7 @@
  */
 
 #include "suricata-common.h"
-#include "config.h"
+#include "../config.h"
 
 #if HAVE_GETOPT_H
 #include <getopt.h>
@@ -178,6 +178,15 @@
 
 #include "rust.h"
 #include "rust-core-gen.h"
+
+#include <mysql.h>
+#include <my_global.h>
+
+// Define mysql server connection info
+#define MYSQL_SERVER_HOST                       "localhost"
+#define MYSQL_USERNAME                          "user"
+#define MYSQL_USER_PASSWORD                     "pass"
+MYSQL *mysql_con = NULL;
 
 /*
  * we put this here, because we only use it here in main.
@@ -2905,6 +2914,119 @@ static int PostConfLoadedSetup(SCInstance *suri)
     SCReturnInt(TM_ECODE_OK);
 }
 
+
+// Construct mysql connection
+void InitializeMySQLServerConnection(){
+	MYSQL *mysql_con = mysql_init(NULL);
+	if (mysql_con == NULL) 
+	{
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		//TODO NEED TO DETERMINE HOW TO HANDLE A CONSTRUCTION ERROR
+		SCLogError("failed to construct mysql ipaddress server handle");
+        exit(EXIT_FAILURE);
+	}
+
+	// Connect to mysql database. Requires root
+	if (mysql_real_connect(mysql_con, MYSQL_SERVER_HOST, MYSQL_USERNAME, MYSQL_USER_PASSWORD, 
+		  NULL, 0, NULL, 0) == NULL) 
+	{
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		mysql_close(mysql_con);
+		//TODO NEED TO DETERMINE HOW TO HANDLE A CONNECTION ERROR
+		SCLogError("failed to connect to mysql ipaddress server");
+        exit(EXIT_FAILURE);
+	}
+
+	// Create database 
+	if (mysql_query(mysql_con, "CREATE DATABASE IF NOT EXISTS dnslookup;")) 
+	{
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		mysql_close(mysql_con);
+        exit(EXIT_FAILURE);
+	}
+	
+	if (mysql_query(mysql_con, "USE dnslookup;"))
+	{
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		mysql_close(mysql_con);
+        exit(EXIT_FAILURE);
+	}
+
+	// Create table if non-existent
+	if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses (ipaddress BIGINT, PRIMARY KEY (ipaddress));")) 
+	{
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		mysql_close(mysql_con);
+        exit(EXIT_FAILURE);
+	}
+
+	// Create memory table to speed up checks
+	if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses_mem (ipaddress BIGINT, PRIMARY KEY (ipaddress)) ENGINE = MEMORY;")) 
+	{
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		mysql_close(mysql_con);
+        exit(EXIT_FAILURE);
+	}
+
+	// Load non-volatile table into memory table
+	if (mysql_query(mysql_con, "INSERT IGNORE INTO ipaddresses_mem (ipaddress) SELECT ipaddress FROM ipaddresses;")) 
+	{
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		mysql_close(mysql_con);
+        exit(EXIT_FAILURE);
+	}	
+
+	// Create prepared statments
+	if (mysql_query(mysql_con, "PREPARE ipaddress_query FROM 'SELECT * FROM ipaddresses_mem WHERE ipaddress = ?';")){
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		mysql_close(mysql_con);
+        exit(EXIT_FAILURE);
+	}
+
+	// Create prepared statments
+	if (mysql_query(mysql_con, "PREPARE ipaddress_insert FROM 'INSERT IGNORE INTO ipaddresses_mem VALUES (?)';")){
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		mysql_close(mysql_con);
+        exit(EXIT_FAILURE);
+	}
+
+}
+
+
+int CloseMySQLServerConnection(){
+
+	// Copy new ipaddresses from ipaddresses_mem into ipaddresses for later use
+	if (mysql_query(mysql_con, "INSERT IGNORE INTO ipaddresses (ipaddress) SELECT ipaddress FROM ipaddresses_mem;")){
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		return 1;
+	}
+
+	// Deallocate prepared statements
+	if (mysql_query(mysql_con, "DEALLOCATE PREPARE ipaddress_query;")){
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		return 1;
+	}
+	if (mysql_query(mysql_con, "DEALLOCATE PREPARE ipaddress_insert;")){
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		SCLogError(mysql_error(mysql_con));
+		return 1;
+	}
+
+	// Close mysql connection
+	mysql_close(mysql_con);
+	return 0;
+}
+
+
 static void SuricataMainLoop(SCInstance *suri)
 {
     while(1) {
@@ -3090,6 +3212,7 @@ int main(int argc, char **argv)
 #endif
 
     SCPledge();
+	InitializeMySQLServerConnection();
     SuricataMainLoop(&suricata);
 
     /* Update the engine stage/status flag */
@@ -3103,5 +3226,10 @@ int main(int argc, char **argv)
 out:
     GlobalsDestroy(&suricata);
 
+	// Make sure mysql server connection closed successfully
+	if (CloseMySQLServerConnection()){
+        SCLogError("Failure to adequately close mysql server connection");
+		exit(EXIT_FAILURE);
+	}
     exit(EXIT_SUCCESS);
 }

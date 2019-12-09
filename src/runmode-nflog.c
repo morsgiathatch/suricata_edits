@@ -21,7 +21,7 @@
  * \author Giuseppe Longo <giuseppelng@gmail.com>
  */
 #include "suricata-common.h"
-#include "config.h"
+#include "../config.h"
 #include "tm-threads.h"
 #include "conf.h"
 #include "runmodes.h"
