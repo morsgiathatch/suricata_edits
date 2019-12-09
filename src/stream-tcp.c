@@ -97,6 +97,11 @@
 #define STREAMTCP_EMERG_EST_TIMEOUT             300
 #define STREAMTCP_EMERG_CLOSED_TIMEOUT          20
 
+// Define mysql server connection info
+#define MYSQL_SERVER_HOST                       "localhost"
+#define MYSQL_USERNAME                          "user"
+#define MYSQL_USER_PASSWORD                     "pass"
+
 static int StreamTcpHandleFin(ThreadVars *tv, StreamTcpThread *, TcpSession *, Packet *, PacketQueue *);
 void StreamTcpReturnStreamSegments (TcpStream *);
 void StreamTcpInitConfig(char);
@@ -742,7 +747,7 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 			}
 			
 			// Connect to local mysql database. Requires root
-			if (mysql_real_connect(con, "localhost", "root", "password", 
+			if (mysql_real_connect(con, MYSQL_SERVER_HOST, MYSQL_USERNAME, MYSQL_USER_PASSWORD, 
 				  NULL, 0, NULL, 0) == NULL) 
 			{
 				fprintf(stderr, "%s\n", mysql_error(mysql_con));
@@ -752,38 +757,6 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 				return NULL;
 			}
 
-			// Create database 
-			if (mysql_query(mysql_con, "CREATE DATABASE IF NOT EXISTS dnslookup;")) 
-			{
-				fprintf(stderr, "%s\n", mysql_error(mysql_con));
-				mysql_close(mysql_con);
-				return NULL;
-			}
-			
-			// Use database. This should not throw error if above worked correctly
-			if (mysql_query(mysql_con, "USE dnslookup;"))
-			{
-				fprintf(stderr, "%s\n", mysql_error(mysql_con));
-				mysql_close(mysql_con);
-				SCLogDebug("failed to connect to use database");
-				return NULL;
-			}
-
-			// Create table 
-			if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses (ipaddress BIGINT, PRIMARY KEY (ipaddress));")) 
-			{
-				fprintf(stderr, "%s\n", mysql_error(mysql_con));
-				mysql_close(mysql_con);
-				return NULL;
-			}
-
-			// Load table into memory table to speed up checks
-			if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses_mem (ipaddress BIGINT, PRIMARY KEY (ipaddress)) ENGINE = MEMORY AS SELECT * FROM ipaddresses;")) 
-			{
-				fprintf(stderr, "%s\n", mysql_error(mysql_con));
-				mysql_close(mysql_con);
-				exit(1);
-			}
 
 			// Construct query
 			int mysql_buffer_padding = 34;
