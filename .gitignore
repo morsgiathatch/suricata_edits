@@ -58,3 +58,4 @@ qa/coccinelle/struct-flags.cocci
 !/suricata-update/Makefile.am
 /mysql_tests/a.out
 /mysql_tests/test
+doc/userguide/suricata.*

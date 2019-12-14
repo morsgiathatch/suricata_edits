@@ -194,7 +194,7 @@
 
 // Define mysql server connection info
 #define MYSQL_SERVER_HOST                       "localhost"
-#define MYSQL_USERNAME                          "user"
+#define MYSQL_USERNAME                          "root"
 #define MYSQL_USER_PASSWORD                     "pass"
 MYSQL *mysql_con = NULL;
 
