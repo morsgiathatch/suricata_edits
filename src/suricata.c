@@ -2933,7 +2933,7 @@ void InitializeMySQLServerConnection(){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		//TODO NEED TO DETERMINE HOW TO HANDLE A CONSTRUCTION ERROR
 		fprintf(stderr, "failed to construct mysql ipaddress server handle");
-        exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 
 	// Connect to mysql database. Requires root
@@ -2944,7 +2944,7 @@ void InitializeMySQLServerConnection(){
 		mysql_close(mysql_con);
 		//TODO NEED TO DETERMINE HOW TO HANDLE A CONNECTION ERROR
 		fprintf(stderr, "failed to connect to mysql ipaddress server");
-        exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 
 	// Create database 
@@ -2952,14 +2952,14 @@ void InitializeMySQLServerConnection(){
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
-        exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 	
 	if (mysql_query(mysql_con, "USE dnslookup;"))
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
-        exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 
 	// Create table if non-existent
@@ -2967,7 +2967,7 @@ void InitializeMySQLServerConnection(){
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
-        exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 
 	// Create memory table to speed up checks
@@ -2975,7 +2975,7 @@ void InitializeMySQLServerConnection(){
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
-        exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 
 	// Load non-volatile table into memory table
@@ -2983,21 +2983,21 @@ void InitializeMySQLServerConnection(){
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
-        exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}	
 
 	// Create prepared statments
 	if (mysql_query(mysql_con, "PREPARE ipaddress_query FROM 'SELECT * FROM ipaddresses_mem WHERE ipaddress = ?';")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
-        exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 
 	// Create prepared statments
 	if (mysql_query(mysql_con, "PREPARE ipaddress_insert FROM 'INSERT IGNORE INTO ipaddresses_mem VALUES (?)';")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
-        exit(EXIT_FAILURE);
+		exit(EXIT_FAILURE);
 	}
 
 }
@@ -3228,7 +3228,7 @@ out:
 
 	// Make sure mysql server connection closed successfully
 	if (CloseMySQLServerConnection()){
-        fprintf(stderr, "Failure to adequately close mysql server connection");
+		fprintf(stderr, "Failure to adequately close mysql server connection");
 		exit(EXIT_FAILURE);
 	}
     exit(EXIT_SUCCESS);
