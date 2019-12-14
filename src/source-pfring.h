@@ -26,7 +26,7 @@
 
 #define PFRING_IFACE_NAME_LENGTH 48
 
-#include "../config.h"
+#include <config.h>
 
 typedef struct PfringThreadVars_ PfringThreadVars;
 

@@ -25,7 +25,7 @@
  */
 
 #include "suricata-common.h"
-#include "../config.h"
+#include "config.h"
 #include "util-host-info.h"
 
 #ifndef OS_WIN32

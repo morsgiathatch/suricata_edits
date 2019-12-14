@@ -87,6 +87,8 @@ typedef struct File_ {
                                      *   flag is set */
     uint64_t content_stored;
     uint64_t size;
+    uint32_t inspect_window;
+    uint32_t inspect_min_size;
     uint64_t start;
     uint64_t end;
 
@@ -165,6 +167,8 @@ int FileAppendDataById(FileContainer *, uint32_t track_id,
         const uint8_t *data, uint32_t data_len);
 int FileAppendGAPById(FileContainer *ffc, uint32_t track_id,
         const uint8_t *data, uint32_t data_len);
+
+void FileSetInspectSizes(File *file, const uint32_t win, const uint32_t min);
 
 /**
  *  \brief Sets the offset range for a file.

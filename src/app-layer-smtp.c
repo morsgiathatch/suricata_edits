@@ -55,6 +55,7 @@
 
 #include "util-mem.h"
 #include "util-misc.h"
+#include "util-validate.h"
 
 /* content-limit default value */
 #define FILEDATA_CONTENT_LIMIT 100000
@@ -368,41 +369,6 @@ static SMTPTransaction *SMTPTransactionCreate(void)
     return tx;
 }
 
-/** \internal
- *  \brief update inspected tracker if it gets to far behind
- *
- *  As smtp uses the FILE_USE_DETECT flag in the file API, we are responsible
- *  for making sure that File::content_inspected is not getting too far
- *  behind.
- */
-static void SMTPPruneFiles(FileContainer *files)
-{
-    SCLogDebug("cfg: win %"PRIu32" min_size %"PRIu32,
-            smtp_config.content_inspect_window, smtp_config.content_inspect_min_size);
-
-    File *file = files->head;
-    while (file) {
-        SCLogDebug("file %p", file);
-        uint32_t window = smtp_config.content_inspect_window;
-        if (file->sb->stream_offset == 0)
-            window = MAX(window, smtp_config.content_inspect_min_size);
-
-        uint64_t file_size = FileDataSize(file);
-        uint64_t data_size = file_size - file->sb->stream_offset;
-
-        SCLogDebug("window %"PRIu32", file_size %"PRIu64", data_size %"PRIu64,
-                window, file_size, data_size);
-
-        if (data_size > (window * 3)) {
-            uint64_t left_edge = file_size - window;
-            SCLogDebug("file->content_inspected now %"PRIu64, left_edge);
-            file->content_inspected = left_edge;
-        }
-
-        file = file->next;
-    }
-}
-
 static void FlagDetectStateNewFile(SMTPTransaction *tx)
 {
     if (tx && tx->de_state) {
@@ -413,6 +379,27 @@ static void FlagDetectStateNewFile(SMTPTransaction *tx)
     } else if (tx->de_state == NULL) {
         SCLogDebug("DETECT_ENGINE_STATE_FLAG_FILE_NEW NOT set, no TX DESTATE");
     }
+}
+
+static void SMTPNewFile(SMTPTransaction *tx, File *file)
+{
+    DEBUG_VALIDATE_BUG_ON(tx == NULL);
+    DEBUG_VALIDATE_BUG_ON(file == NULL);
+#ifdef UNITTESTS
+    if (RunmodeIsUnittests()) {
+        if (tx == NULL || file == NULL) {
+            return;
+        }
+    }
+#endif
+    FlagDetectStateNewFile(tx);
+    FileSetTx(file, tx->tx_id);
+
+    /* set inspect sizes used in file pruning logic.
+     * TODO consider moving this to the file.data code that
+     * would actually have use for this. */
+    FileSetInspectSizes(file, smtp_config.content_inspect_window,
+            smtp_config.content_inspect_min_size);
 }
 
 int SMTPProcessDataChunk(const uint8_t *chunk, uint32_t len,
@@ -472,7 +459,7 @@ int SMTPProcessDataChunk(const uint8_t *chunk, uint32_t len,
                 ret = MIME_DEC_ERR_DATA;
                 SCLogDebug("FileOpenFile() failed");
             }
-            FlagDetectStateNewFile(smtp_state->curr_tx);
+            SMTPNewFile(smtp_state->curr_tx, files->tail);
 
             /* If close in the same chunk, then pass in empty bytes */
             if (state->body_end) {
@@ -562,11 +549,6 @@ int SMTPProcessDataChunk(const uint8_t *chunk, uint32_t len,
     } else {
         SCLogDebug("Body not a Ctnt_attachment");
     }
-
-    if (files != NULL) {
-        SMTPPruneFiles(files);
-    }
-
     SCReturnInt(ret);
 }
 
@@ -1263,8 +1245,8 @@ static int SMTPProcessRequest(SMTPState *state, Flow *f,
                 if (FileOpenFileWithId(state->files_ts, &smtp_config.sbcfg,
                         state->file_track_id++,
                         (uint8_t*) msgname, strlen(msgname), NULL, 0,
-                        FILE_NOMD5|FILE_NOMAGIC) == 0) {
-                    FlagDetectStateNewFile(state->curr_tx);
+                        FILE_NOMD5|FILE_NOMAGIC|FILE_USE_DETECT) == 0) {
+                    SMTPNewFile(state->curr_tx, state->files_ts->tail);
                 }
             } else if (smtp_config.decode_mime) {
                 if (tx->mime_state) {

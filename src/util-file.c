@@ -37,6 +37,8 @@
 #include "app-layer-parser.h"
 #include "util-validate.h"
 
+extern int g_detect_disabled;
+
 /** \brief switch to force filestore on all files
  *         regardless of the rules.
  */
@@ -299,9 +301,32 @@ uint64_t FileTrackedSize(const File *file)
     return 0;
 }
 
+/** \brief test if file is ready to be pruned
+ *
+ *  If a file is in the 'CLOSED' state, it means it has been processed
+ *  completely by the pipeline in the correct direction. So we can
+ *  prune it then.
+ *
+ *  For other states, as well as for files we may not need to track
+ *  until the close state, more specific checks are done.
+ *
+ *  Also does house keeping within the file: move streaming buffer
+ *  forward if possible.
+ *
+ *  \retval 1 prune (free) this file
+ *  \retval 0 file not ready to be freed
+ */
 static int FilePruneFile(File *file)
 {
     SCEnter();
+
+    /* file is done when state is closed+, logging/storing is done (if any) */
+    SCLogDebug("file->state %d. Is >= FILE_STATE_CLOSED: %s",
+            file->state, (file->state >= FILE_STATE_CLOSED) ? "yes" : "no");
+    if (file->state >= FILE_STATE_CLOSED) {
+        SCReturnInt(1);
+    }
+
 #ifdef HAVE_MAGIC
     if (!(file->flags & FILE_NOMAGIC)) {
         /* need magic but haven't set it yet, bail out */
@@ -313,30 +338,39 @@ static int FilePruneFile(File *file)
         SCLogDebug("file->flags & FILE_NOMAGIC == true");
     }
 #endif
-    uint64_t left_edge = file->content_stored;
-    if (file->flags & FILE_NOSTORE) {
-        left_edge = FileDataSize(file);
+    uint64_t left_edge = FileDataSize(file);
+    if (file->flags & FILE_STORE) {
+        left_edge = MIN(left_edge,file->content_stored);
     }
     if (file->flags & FILE_USE_DETECT) {
         left_edge = MIN(left_edge, file->content_inspected);
+
+        /* if file has inspect window and min size set, we
+         * do some house keeping here */
+        if (file->inspect_window != 0 && file->inspect_min_size != 0) {
+            uint32_t window = file->inspect_window;
+            if (file->sb->stream_offset == 0)
+                window = MAX(window, file->inspect_min_size);
+
+            uint64_t file_size = FileDataSize(file);
+            uint64_t data_size = file_size - file->sb->stream_offset;
+
+            SCLogDebug("window %"PRIu32", file_size %"PRIu64", data_size %"PRIu64,
+                    window, file_size, data_size);
+
+            if (data_size > (window * 3)) {
+                left_edge = file_size - window;
+                SCLogDebug("file->content_inspected now %"PRIu64, left_edge);
+                file->content_inspected = left_edge;
+            }
+        }
     }
 
     if (left_edge) {
         StreamingBufferSlideToOffset(file->sb, left_edge);
     }
 
-    if (left_edge != FileDataSize(file)) {
-        SCReturnInt(0);
-    }
-
-    SCLogDebug("file->state %d. Is >= FILE_STATE_CLOSED: %s", file->state, (file->state >= FILE_STATE_CLOSED) ? "yes" : "no");
-
-    /* file is done when state is closed+, logging/storing is done (if any) */
-    if (file->state >= FILE_STATE_CLOSED) {
-        SCReturnInt(1);
-    } else {
-        SCReturnInt(0);
-    }
+    SCReturnInt(0);
 }
 
 void FilePrune(FileContainer *ffc)
@@ -736,6 +770,12 @@ int FileAppendGAPById(FileContainer *ffc, uint32_t track_id,
     SCReturnInt(-1);
 }
 
+void FileSetInspectSizes(File *file, const uint32_t win, const uint32_t min)
+{
+    file->inspect_window = win;
+    file->inspect_min_size = min;
+}
+
 /**
  *  \brief Sets the offset range for a file.
  *
@@ -815,7 +855,7 @@ static File *FileOpenFile(FileContainer *ffc, const StreamingBufferConfig *sbcfg
         SCLogDebug("not doing sha256 for this file");
         ff->flags |= FILE_NOSHA256;
     }
-    if (flags & FILE_USE_DETECT) {
+    if (!g_detect_disabled && flags & FILE_USE_DETECT) {
         SCLogDebug("considering content_inspect tracker when pruning");
         ff->flags |= FILE_USE_DETECT;
     }

@@ -22,7 +22,7 @@
  */
 
 #include "suricata-common.h"
-#include "../config.h"
+#include "config.h"
 #include "suricata.h"
 #include "util-byte.h"
 #include "util-debug.h"

@@ -28,7 +28,7 @@
 #define __THREADS_H__
 
 #if HAVE_CONFIG_H
-#include "../config.h"
+#include <config.h>
 #endif
 
 /* need this for the _POSIX_SPIN_LOCKS define */
