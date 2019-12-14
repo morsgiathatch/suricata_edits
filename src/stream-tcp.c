@@ -26,6 +26,19 @@
  * \todo - 4WHS: what if after the 2nd SYN we turn out to be normal 3WHS anyway?
  */
 
+#define uint64 mysql_uint64
+#define int64 mysql_int64
+#define File mysql_file
+#define TRUE mysql_true
+#define FALSE mysql_false
+#include <my_global.h>
+#include <mysql.h>
+#undef uint64
+#undef int64
+#undef File
+#undef TRUE
+#undef FALSE
+
 #include "suricata-common.h"
 #include "suricata.h"
 
@@ -76,9 +89,6 @@
 #include "util-random.h"
 
 #include "source-pcap-file.h"
-
-#include <my_global.h>
-#include <mysql.h>
 
 // pointer to mysql server connection
 extern MYSQL *mysql_con;
@@ -745,7 +755,7 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 				if ( PKT_IS_IPV4(p))
 					addr = GET_IPV4_DST_ADDR_U32(p);
 				else
-					addr = GET_IPV6_DST_ADDR(p);
+					addr = *GET_IPV6_DST_ADDR(p);
 				char query[mysql_buffer_padding];
 				snprintf(query, mysql_buffer_padding, "SET @ip = '%lu';", (long unsigned)addr);
 				if (mysql_query(mysql_con, query)){

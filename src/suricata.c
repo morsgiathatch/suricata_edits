@@ -21,6 +21,19 @@
  * \author Victor Julien <victor@inliniac.net>
  */
 
+#define uint64 mysql_uint64
+#define int64 mysql_int64
+#define File mysql_file
+#define TRUE mysql_true
+#define FALSE mysql_false
+#include <my_global.h>
+#include <mysql.h>
+#undef uint64
+#undef int64
+#undef File
+#undef TRUE
+#undef FALSE
+
 #include "suricata-common.h"
 #include "../config.h"
 
@@ -178,9 +191,6 @@
 
 #include "rust.h"
 #include "rust-core-gen.h"
-
-#include <mysql.h>
-#include <my_global.h>
 
 // Define mysql server connection info
 #define MYSQL_SERVER_HOST                       "localhost"
@@ -2922,7 +2932,7 @@ void InitializeMySQLServerConnection(){
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		//TODO NEED TO DETERMINE HOW TO HANDLE A CONSTRUCTION ERROR
-		SCLogError("failed to construct mysql ipaddress server handle");
+		fprintf(stderr, "failed to construct mysql ipaddress server handle");
         exit(EXIT_FAILURE);
 	}
 
@@ -2933,7 +2943,7 @@ void InitializeMySQLServerConnection(){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
 		//TODO NEED TO DETERMINE HOW TO HANDLE A CONNECTION ERROR
-		SCLogError("failed to connect to mysql ipaddress server");
+		fprintf(stderr, "failed to connect to mysql ipaddress server");
         exit(EXIT_FAILURE);
 	}
 
@@ -2941,7 +2951,6 @@ void InitializeMySQLServerConnection(){
 	if (mysql_query(mysql_con, "CREATE DATABASE IF NOT EXISTS dnslookup;")) 
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		mysql_close(mysql_con);
         exit(EXIT_FAILURE);
 	}
@@ -2949,7 +2958,6 @@ void InitializeMySQLServerConnection(){
 	if (mysql_query(mysql_con, "USE dnslookup;"))
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		mysql_close(mysql_con);
         exit(EXIT_FAILURE);
 	}
@@ -2958,7 +2966,6 @@ void InitializeMySQLServerConnection(){
 	if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses (ipaddress BIGINT, PRIMARY KEY (ipaddress));")) 
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		mysql_close(mysql_con);
         exit(EXIT_FAILURE);
 	}
@@ -2967,7 +2974,6 @@ void InitializeMySQLServerConnection(){
 	if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses_mem (ipaddress BIGINT, PRIMARY KEY (ipaddress)) ENGINE = MEMORY;")) 
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		mysql_close(mysql_con);
         exit(EXIT_FAILURE);
 	}
@@ -2976,7 +2982,6 @@ void InitializeMySQLServerConnection(){
 	if (mysql_query(mysql_con, "INSERT IGNORE INTO ipaddresses_mem (ipaddress) SELECT ipaddress FROM ipaddresses;")) 
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		mysql_close(mysql_con);
         exit(EXIT_FAILURE);
 	}	
@@ -2984,7 +2989,6 @@ void InitializeMySQLServerConnection(){
 	// Create prepared statments
 	if (mysql_query(mysql_con, "PREPARE ipaddress_query FROM 'SELECT * FROM ipaddresses_mem WHERE ipaddress = ?';")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		mysql_close(mysql_con);
         exit(EXIT_FAILURE);
 	}
@@ -2992,7 +2996,6 @@ void InitializeMySQLServerConnection(){
 	// Create prepared statments
 	if (mysql_query(mysql_con, "PREPARE ipaddress_insert FROM 'INSERT IGNORE INTO ipaddresses_mem VALUES (?)';")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		mysql_close(mysql_con);
         exit(EXIT_FAILURE);
 	}
@@ -3005,19 +3008,16 @@ int CloseMySQLServerConnection(){
 	// Copy new ipaddresses from ipaddresses_mem into ipaddresses for later use
 	if (mysql_query(mysql_con, "INSERT IGNORE INTO ipaddresses (ipaddress) SELECT ipaddress FROM ipaddresses_mem;")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		return 1;
 	}
 
 	// Deallocate prepared statements
 	if (mysql_query(mysql_con, "DEALLOCATE PREPARE ipaddress_query;")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		return 1;
 	}
 	if (mysql_query(mysql_con, "DEALLOCATE PREPARE ipaddress_insert;")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
-		SCLogError(mysql_error(mysql_con));
 		return 1;
 	}
 
@@ -3228,7 +3228,7 @@ out:
 
 	// Make sure mysql server connection closed successfully
 	if (CloseMySQLServerConnection()){
-        SCLogError("Failure to adequately close mysql server connection");
+        fprintf(stderr, "Failure to adequately close mysql server connection");
 		exit(EXIT_FAILURE);
 	}
     exit(EXIT_SUCCESS);
