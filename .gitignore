@@ -6,11 +6,11 @@
 *.rule
 *.rules
 /*.yaml
+!suricata.yaml.in
 Makefile
 .deps/
 .libs/
 *~
-m4/
 TAGS
 aclocal.m4
 autom4te.cache/
