@@ -5,7 +5,7 @@ This repo is to keep track of file changes to the Suricata library.
 The tests are for me to test functionality of the C/mySQL interface
 functionality. If you care, point to the root of the directory and run
 ```bash
-	$ cd mysql_tests; make; sudo ./test
+cd mysql_tests; make; sudo ./test
 ```
 in order to use the tests. 
 
@@ -14,12 +14,12 @@ in order to use the tests.
 In order to use the software, you must have `mysql server` installed. To install
 on ubuntu, use:
 ```bash
-	sudo apt update
-	sudo apt install mysql-server
+sudo apt update
+sudo apt install mysql-server
 ```
 There are additional installations that are recommended, however I did not use them. They are 
 ```bash
-	sudo mysql_secure_installation
+sudo mysql_secure_installation
 ```
 If you install the additional software, there are prompts that let you decide how to set up `mysql-server`.
 After this, build the software below. As it stands, no passwords or users need to be set for the database
@@ -31,11 +31,11 @@ in your local mysql-server.
 
 First `cd` to the Suricata root directory. Then run
 ```bash
-	git clone https://github.com/OISF/libhtp
+git clone https://github.com/OISF/libhtp
 ```
 This should allow the following commands to run smoothely.
 ```bash
-	./autogen.sh; ./configure; make; make install
+./autogen.sh; ./configure; make; make install
 ```
 You may need root access for a portion of the commands.
 
@@ -44,7 +44,7 @@ You may need root access for a portion of the commands.
 We have not decided how to gracefully handle mysql-database errors. Additionally, I have no idea why
 I get errors when I run
 ```bash
-	sudo suricata -c suricata.yaml -s signatures.rules -i eth0
+sudo suricata -c suricata.yaml -s signatures.rules -i eth0
 ```
 These are the errors:
 ```bash
