@@ -38,6 +38,8 @@ This should allow the following commands to run smoothely.
 ./autogen.sh; ./configure; make; make install
 ```
 You may need root access for a portion of the commands.
+Warnings will appear when building the object files for `src/suricata.c` and
+`src/stream-tcp.c`. These are harmless for our current purposes imo.
 
 ## Current Issues
 
