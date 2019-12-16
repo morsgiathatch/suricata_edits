@@ -794,6 +794,7 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 							printf("\n"); 
 					}
 				}
+				mysql_free_result(result);
 			}
 		
 	    } else if (PKT_IS_TOCLIENT(p)) {
