@@ -2927,7 +2927,8 @@ static int PostConfLoadedSetup(SCInstance *suri)
 
 // Construct mysql connection
 void InitializeMySQLServerConnection(){
-	MYSQL *mysql_con = mysql_init(NULL);
+	mysql_con = mysql_init(NULL);
+	fprintf(stderr, "%s\n", "Initiailizing local mysql server");
 	if (mysql_con == NULL) 
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));

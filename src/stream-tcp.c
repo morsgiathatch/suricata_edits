@@ -747,7 +747,6 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 
 			// Only check mysql database if active connection
 			if (mysql_con != NULL){
-
 				// Set variable for prepared statment
 				int mysql_buffer_padding = 32;
 				// See src/decode.h for info on finding address. I believe below is correct
