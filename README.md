@@ -55,10 +55,10 @@ NUMA node0 CPU(s):   0-3
 ```
 I get the following results
 ```bash
-Processed 400 / 400 queries after 23008 inserts
-Average query time for IPv4 query during inserts was 0.0058915305137634
-Average query time for IPv6 query during inserts was 0.0065747618675232
-Average number of inserts per second was 445.4506248590296877
+Processed 400 / 400 queries after 39062 inserts
+Average query time for IPv4 query during inserts was 0.0036564040184021
+Average query time for IPv6 query during inserts was 0.0034817528724670
+Average number of inserts per second was 766.6718794172512617
 
 ```
 
