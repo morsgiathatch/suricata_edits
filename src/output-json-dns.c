@@ -354,6 +354,50 @@ static int JsonDnsLoggerToClient(ThreadVars *tv, void *thread_data,
             json_object_set_new(js, "dns", answer);
             MemBufferReset(td->buffer);
             OutputJSONBuffer(js, td->dnslog_ctx->file_ctx, &td->buffer);
+
+			/* Possible keys are, in order: 
+				version == JSON_INTEGER           == 3
+				type    == JSON_STRING            == 2
+				id      == JSON_INTEGER           == 3
+				flags   == JSON_STRING            == 2
+				qr      == JSON_TRUE/JSON_FALSE   == 5 / 6 
+				rd      == JSON_TRUE/JSON_FALSE   == 5 / 6
+				ra      == JSON_TRUE/JSON_FALSE   == 5 / 6
+				rrname  == JSON_STRING            == 2 
+				rrtype  == JSON_STRING            == 2
+				rcode   == JSON_STRING            == 2
+				answers == JSON_ARRAY             == 1
+	 			grouped == JSON_OBJECT            == 0
+				Additional info can be seen here: https://jansson.readthedocs.io/en/2.8/apiref.html
+			 */
+
+			if ((int)json_typeof(answer) == JSON_OBJECT){
+				const char *key;
+				const char *answer_key;
+				size_t index;
+				json_t *value, *arr_value, *answer_value;
+				int ipaddress_flag = 1;     /* 0 = False, 1 = True*/ 
+
+				json_object_foreach(answer, key, value){
+					if (strcmp(key, "answers") == 0 && json_typeof(value) == JSON_ARRAY){         
+						json_array_foreach(value, index, arr_value) {
+							if ((int)json_typeof(arr_value) == JSON_OBJECT){
+								json_object_foreach(arr_value, answer_key, answer_value){
+									if (strcmp(answer_key, "rrtype") == 0){
+										if (strcmp(json_string_value(answer_value), "A") != 0 && strcmp(json_string_value(answer_value), "AAAA"))
+											ipaddress_flag = 0;
+										else
+											ipaddress_flag = 1;
+									}
+
+									if (ipaddress_flag == 1 && strcmp(answer_key, "rdata") == 0)
+										fprintf(stderr, "Ipaddress found: %s\n", json_string_value(answer_value));
+								}
+							}
+						}			                      
+					}
+				}
+			}
         }
     } else {
         /* Log answers. */

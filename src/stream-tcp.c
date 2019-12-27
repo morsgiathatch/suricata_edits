@@ -754,7 +754,7 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 				if ( PKT_IS_IPV4(p))
 					addr = GET_IPV4_DST_ADDR_U32(p);
 				else
-					addr = *GET_IPV6_DST_ADDR(p);
+					addr = *GET_IPV6_DST_ADDR(p);    //NOTE: THIS PART IS BROKEN. 128-bit address should be stored in a larger than 32-bit type.
 				char query[mysql_buffer_padding];
 				snprintf(query, mysql_buffer_padding, "SET @ip = '%lu';", (long unsigned)addr);
 				if (mysql_query(mysql_con, query)){
@@ -772,7 +772,7 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 				MYSQL_RES *result = mysql_store_result(mysql_con);
 				int num_rows = mysql_num_rows(result);
 				if (num_rows == 0){                                                                // Query miss
-					fprintf(stderr, "Address not found\n");
+					fprintf(stderr, "Address %lu not found :(\n", (long unsigned)addr);
 					if (mysql_query(mysql_con, "EXECUTE ipaddress_insert USING @ip;")) 
 					{
 						fprintf(stderr, "%s\n", mysql_error(mysql_con));
@@ -782,17 +782,7 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 					fprintf(stderr, "Insert successful\n");
 
 				} else {                                                                           // Query hit
-					fprintf(stderr, "Address in table\n");
-					MYSQL_ROW row;
-					int num_fields = mysql_num_fields(result);
-					while ((row = mysql_fetch_row(result))) 
-					{ 
-						for(int i = 0; i < num_fields; i++) 
-						{ 
-							printf("%s ", row[i] ? row[i] : "NULL"); 
-						} 
-							printf("\n"); 
-					}
+					fprintf(stderr, "Address %lu in table!\n", (long unsigned)addr);
 				}
 				mysql_free_result(result);
 			}
