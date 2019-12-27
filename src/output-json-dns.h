@@ -30,5 +30,6 @@ void JsonDnsLogRegister(void);
 
 json_t *JsonDNSLogQuery(void *txptr, uint64_t tx_id) __attribute__((nonnull));
 json_t *JsonDNSLogAnswer(void *txptr, uint64_t tx_id) __attribute__((nonnull));
+void PrintIPAddressFromJsonDNSLogAnswer(json_t *answer);
 
 #endif /* __OUTPUT_JSON_DNS_H__ */
