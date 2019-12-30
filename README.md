@@ -1,13 +1,50 @@
 # suricata_edits
 This repo is to keep track of file changes to the Suricata library. 
 
-## MySQL Test
-The tests are for me to test functionality of the C/mySQL interface
-functionality. If you care, point to the root of the directory and run
+## Dependencies
+
+In order to use the software, you must have `mysql server` installed. To install
+on ubuntu, use:
 ```bash
-cd mysql_tests; make; sudo ./test
+sudo apt update
+sudo apt install mysql-server
 ```
-in order to use the tests. 
+There are additional installations that are recommended, however I did not use them. They are 
+```bash
+sudo mysql_secure_installation
+```
+If you install the additional software, there are prompts that let you decide how to set up `mysql-server`.
+After this, build the software below. As it stands, no passwords or users need to be set for the database
+for this project. All that is needed is root access and the hope that you do not have a databasse called `dnslookup`
+in your local mysql-server.
+
+## Building and Running
+
+First `cd` to the Suricata root directory. Then run
+```bash
+git clone https://github.com/OISF/libhtp
+```
+This should allow the following commands to run smoothely.
+```bash
+sudo ./autogen.sh; sudo ./configure; sudo make; sudo make install
+```
+You may need root access for a portion of the commands.
+Warnings will appear when building the object files for `src/suricata.c` and
+`src/stream-tcp.c`. These are harmless for our current purposes.
+
+After this, to avoid issues with the `dnslookup` table from previous commits/builds,
+run `sudo mysql` followed by
+```mysql
+DROP DATABASE dnslookup;
+QUIT;
+```
+
+Since I use wifi interface `wlp2s0`, I use
+```bash
+sudo suricata -i wlp2s0
+
+```
+to run and `CTRL-C` to quit.
 
 ## ipset Test
 This test looks at average insertion time in milliseconds while threads are inserting into ipsets. 
@@ -59,52 +96,4 @@ Processed 400 / 400 queries after 39062 inserts
 Average query time for IPv4 query during inserts was 0.0036564040184021
 Average query time for IPv6 query during inserts was 0.0034817528724670
 Average number of inserts per second was 766.6718794172512617
-
 ```
-
-## Dependencies
-
-In order to use the software, you must have `mysql server` installed. To install
-on ubuntu, use:
-```bash
-sudo apt update
-sudo apt install mysql-server
-```
-There are additional installations that are recommended, however I did not use them. They are 
-```bash
-sudo mysql_secure_installation
-```
-If you install the additional software, there are prompts that let you decide how to set up `mysql-server`.
-After this, build the software below. As it stands, no passwords or users need to be set for the database
-for this project. All that is needed is root access and the hope that you do not have a databasse called `dnslookup`
-in your local mysql-server.
-
-## Building and Running
-
-First `cd` to the Suricata root directory. Then run
-```bash
-git clone https://github.com/OISF/libhtp
-```
-This should allow the following commands to run smoothely.
-```bash
-./autogen.sh; ./configure; make; make install
-```
-You may need root access for a portion of the commands.
-Warnings will appear when building the object files for `src/suricata.c` and
-`src/stream-tcp.c`. These are harmless for our current purposes.
-
-After this, to avoid issues with the `dnslookup` table from previous commits/builds,
-run `sudo mysql` followed by
-```mysql
-DROP DATABASE dnslookup;
-QUIT;
-```
-
-Since I use wifi interface `wlp2s0`, I use
-```bash
-sudo suricata -i wlp2s0
-
-```
-to run and `CTRL-C` to quit.
-
-
