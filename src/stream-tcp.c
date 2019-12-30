@@ -93,6 +93,7 @@
 // pointer to mysql server connection
 extern MYSQL *mysql_con;
 static size_t MYSQL_BUFFER_PADDING = 128;
+extern SCMutex mysql_mutex;
 
 //#define DEBUG
 
@@ -743,18 +744,15 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
             ssn->server.tcp_flags = 0;
 
 			// My initial guess is that ssn == NULL only occurs for new connections.
-			// Additionally, we only wish to check the 
-			// Construct mysql connection
 
 			// Only check mysql database if active connection
-			if (mysql_con != NULL){
-				// Set variable for prepared statment
+			if (mysql_con != NULL && (PKT_IS_IPV4(p) || PKT_IS_IPV6(p))){
 				// See src/decode.h for info on finding address. I believe below is correct
-				char * addr = (char *) malloc(64 * sizeof(char));
+				char addr[64];
 				if (PKT_IS_IPV4(p))
 					PrintInet(AF_INET, GET_IPV4_DST_ADDR_PTR(p), addr, 64);
-				else if (PKT_IS_IPV6(p))
-					PrintInet(AF_INET6, (const void *)GET_IPV6_DST_ADDR(p), addr, 64);
+				else
+					PrintInet(AF_INET6, (const void *)GET_IPV6_DST_ADDR(p), addr, 64);	
 
 				if (addr == NULL){
 					fprintf(stderr, "Unable to create ipaddress string\n");
@@ -763,27 +761,32 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 
 				char query[MYSQL_BUFFER_PADDING];
 				snprintf(query, MYSQL_BUFFER_PADDING, "SET @ip = '%s';", addr);
+
+				SCMutexLock(&mysql_mutex);
 				if (mysql_query(mysql_con, query)){
 					fprintf(stderr, "%s\n", mysql_error(mysql_con));
+					SCMutexUnlock(&mysql_mutex);
 					return NULL;
 				}
 
 				// Execute select query
 				if (mysql_query(mysql_con, "Execute ipaddress_query USING @ip;")){
 					fprintf(stderr, "%s\n", mysql_error(mysql_con));
+					SCMutexUnlock(&mysql_mutex);
 					return NULL;
 				}
 
 				// Get result of query
 				MYSQL_RES *result = mysql_store_result(mysql_con);
 				int num_rows = mysql_num_rows(result);
+				SCMutexUnlock(&mysql_mutex);
 				if (num_rows == 0){                                                                
 					fprintf(stderr, "Address %s not in table!\n", addr);
 				} else {                                                                           
 					fprintf(stderr, "Address %s in table!\n", addr);
 				}
 				mysql_free_result(result);
-				free(addr);
+
 			}
 		
 	    } else if (PKT_IS_TOCLIENT(p)) {

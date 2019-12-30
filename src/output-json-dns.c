@@ -289,6 +289,7 @@ typedef struct LogDnsLogThread_ {
 // pointer to mysql server connection
 extern MYSQL *mysql_con;
 static size_t MYSQL_BUFFER_PADDING = 128;
+extern SCMutex mysql_mutex;
 
 json_t *JsonDNSLogQuery(void *txptr, uint64_t tx_id)
 {
@@ -307,7 +308,7 @@ json_t *JsonDNSLogQuery(void *txptr, uint64_t tx_id)
     return queryjs;
 }
 
-void MysqlInsertIPAddressFromJsonDNSLogAnswer(json_t *answer){
+void MysqlInsertIPAddressFromJsonDNSLogAnswer(const Packet * p, json_t *answer){
 	/* Possible keys are, in order: 
 	version == JSON_INTEGER           == 3
 	type    == JSON_STRING            == 2
@@ -345,15 +346,19 @@ void MysqlInsertIPAddressFromJsonDNSLogAnswer(json_t *answer){
 
 							if (ipaddress_flag == 1 && strcmp(answer_key, "rdata") == 0){
 								fprintf(stderr, "Inserting %s to database\n", json_string_value(answer_value));
-								char * query = (char *)malloc(MYSQL_BUFFER_PADDING * sizeof(char));
+								char query[MYSQL_BUFFER_PADDING];
 								snprintf(query, MYSQL_BUFFER_PADDING, "SET @ip_insert = '%s';", json_string_value(answer_value));
+								SCMutexLock(&mysql_mutex);
 								if (mysql_query(mysql_con, query)){
 									fprintf(stderr, "%s\n", mysql_error(mysql_con));
+									SCMutexUnlock(&mysql_mutex);
+									continue;
 								}
 								if (mysql_query(mysql_con, "EXECUTE ipaddress_insert USING @ip_insert;")) 
 								{
 									fprintf(stderr, "%s\n", mysql_error(mysql_con));
 								}
+								SCMutexUnlock(&mysql_mutex);
 							}
 						}
 					}
@@ -429,7 +434,7 @@ static int JsonDnsLoggerToClient(ThreadVars *tv, void *thread_data,
             json_object_set_new(js, "dns", answer);
             MemBufferReset(td->buffer);
             OutputJSONBuffer(js, td->dnslog_ctx->file_ctx, &td->buffer);
-			MysqlInsertIPAddressFromJsonDNSLogAnswer(answer);
+			MysqlInsertIPAddressFromJsonDNSLogAnswer(p, answer);
         }
     } else {
         /* Log answers. */

@@ -197,6 +197,7 @@
 #define MYSQL_USERNAME                          "root"
 #define MYSQL_USER_PASSWORD                     "pass"
 MYSQL *mysql_con = NULL;
+SCMutex mysql_mutex = SCMUTEX_INITIALIZER; 
 
 /*
  * we put this here, because we only use it here in main.
@@ -3229,7 +3230,7 @@ out:
 
 	// Make sure mysql server connection closed successfully
 	if (CloseMySQLServerConnection()){
-		fprintf(stderr, "Failure to adequately close mysql server connection");
+		fprintf(stderr, "Failure to adequately close mysql server connection\n");
 		exit(EXIT_FAILURE);
 	}
     exit(EXIT_SUCCESS);
