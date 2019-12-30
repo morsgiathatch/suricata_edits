@@ -79,8 +79,7 @@ After this, build the software below. As it stands, no passwords or users need t
 for this project. All that is needed is root access and the hope that you do not have a databasse called `dnslookup`
 in your local mysql-server.
 
-
-## Building
+## Building and Running
 
 First `cd` to the Suricata root directory. Then run
 ```bash
@@ -92,26 +91,20 @@ This should allow the following commands to run smoothely.
 ```
 You may need root access for a portion of the commands.
 Warnings will appear when building the object files for `src/suricata.c` and
-`src/stream-tcp.c`. These are harmless for our current purposes imo.
+`src/stream-tcp.c`. These are harmless for our current purposes.
 
-## Current Issues
-
-We have not decided how to gracefully handle mysql-database errors. Additionally, I have no idea why
-I get errors when I run
-```bash
-sudo suricata -c suricata.yaml -s signatures.rules -i eth0
+After this, to avoid issues with the `dnslookup` table from previous commits/builds,
+run `sudo mysql` followed by
+```mysql
+DROP DATABASE dnslookup;
+QUIT;
 ```
-These are the errors:
+
+Since I use wifi interface `wlp2s0`, I use
 ```bash
-[3040] 14/12/2019 -- 16:50:03 - (suricata.c:1103) <Notice> (LogVersion) -- This is Suricata version 5.0.1-dev (80fec43 2019-12-14) running in SYSTEM mode
-[3040] 14/12/2019 -- 16:50:03 - (detect-engine-loader.c:230) <Warning> (ProcessSigFiles) -- [ERRCODE: SC_ERR_NO_RULES(42)] - No rule files match the pattern /usr/local/etc/suricata/rules/suricata.rules
-[3040] 14/12/2019 -- 16:50:03 - (detect-engine-loader.c:230) <Warning> (ProcessSigFiles) -- [ERRCODE: SC_ERR_NO_RULES(42)] - No rule files match the pattern signatures.rules
-[3040] 14/12/2019 -- 16:50:03 - (detect-engine-loader.c:345) <Warning> (SigLoadSignatures) -- [ERRCODE: SC_ERR_NO_RULES_LOADED(43)] - 2 rule files specified, but no rule was loaded at all!
-[3040] 14/12/2019 -- 16:50:03 - (source-af-packet.c:1681) <Error> (AFPGetDevLinktype) -- [ERRCODE: SC_ERR_AFP_CREATE(190)] - Unable to find type for iface "eth0": No such device
-[3040] 14/12/2019 -- 16:50:03 - (tm-threads.c:2165) <Notice> (TmThreadWaitOnThreadInit) -- all 4 packet processing threads, 4 management threads initialized, engine started.
-[3043] 14/12/2019 -- 16:50:03 - (source-af-packet.c:1665) <Error> (AFPGetIfnumByDev) -- [ERRCODE: SC_ERR_AFP_CREATE(190)] - Unable to find iface eth0: No such device
-[3043] 14/12/2019 -- 16:50:03 - (source-af-packet.c:1507) <Error> (ReceiveAFPLoop) -- [ERRCODE: SC_ERR_AFP_CREATE(190)] - Couldn't init AF_PACKET socket, fatal error
-[3040] 14/12/2019 -- 16:50:03 - (tm-threads.c:2082) <Error> (TmThreadCheckThreadState) -- [ERRCODE: SC_ERR_FATAL(171)] - thread W#01-eth0 failed
+sudo suricata -i wlp2s0
 
 ```
+to run and `CTRL-C` to quit.
+
 

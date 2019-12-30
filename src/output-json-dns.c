@@ -23,6 +23,19 @@
  * Implements JSON DNS logging portion of the engine.
  */
 
+#define uint64 mysql_uint64
+#define int64 mysql_int64
+#define File mysql_file
+#define TRUE mysql_true
+#define FALSE mysql_false
+#include <my_global.h>
+#include <mysql.h>
+#undef uint64
+#undef int64
+#undef File
+#undef TRUE
+#undef FALSE
+
 #include "suricata-common.h"
 #include "debug.h"
 #include "detect.h"
@@ -273,6 +286,10 @@ typedef struct LogDnsLogThread_ {
     MemBuffer *buffer;
 } LogDnsLogThread;
 
+// pointer to mysql server connection
+extern MYSQL *mysql_con;
+static size_t MYSQL_BUFFER_PADDING = 128;
+
 json_t *JsonDNSLogQuery(void *txptr, uint64_t tx_id)
 {
     json_t *queryjs = json_array();
@@ -290,7 +307,7 @@ json_t *JsonDNSLogQuery(void *txptr, uint64_t tx_id)
     return queryjs;
 }
 
-void PrintIPAddressFromJsonDNSLogAnswer(json_t *answer){
+void MysqlInsertIPAddressFromJsonDNSLogAnswer(json_t *answer){
 	/* Possible keys are, in order: 
 	version == JSON_INTEGER           == 3
 	type    == JSON_STRING            == 2
@@ -312,7 +329,7 @@ void PrintIPAddressFromJsonDNSLogAnswer(json_t *answer){
 		const char *answer_key;
 		size_t index;
 		json_t *value, *arr_value, *answer_value;
-		int ipaddress_flag = 1;     /* 0 = False, 1 = True*/ 
+		int ipaddress_flag = 1;     /* 0 = False,   1 = True */ 
 
 		json_object_foreach(answer, key, value){
 			if (strcmp(key, "answers") == 0 && json_typeof(value) == JSON_ARRAY){         
@@ -320,27 +337,36 @@ void PrintIPAddressFromJsonDNSLogAnswer(json_t *answer){
 					if ((int)json_typeof(arr_value) == JSON_OBJECT){
 						json_object_foreach(arr_value, answer_key, answer_value){
 							if (strcmp(answer_key, "rrtype") == 0){
-								if (strcmp(json_string_value(answer_value), "A") != 0 && strcmp(json_string_value(answer_value), "AAAA"))
+								if (strcmp(json_string_value(answer_value), "A") != 0 && strcmp(json_string_value(answer_value), "AAAA") != 0)
 									ipaddress_flag = 0;
 								else
 									ipaddress_flag = 1;
 							}
 
-							if (ipaddress_flag == 1 && strcmp(answer_key, "rdata") == 0)
-								fprintf(stderr, "Ipaddress found: %s\n", json_string_value(answer_value));
+							if (ipaddress_flag == 1 && strcmp(answer_key, "rdata") == 0){
+								fprintf(stderr, "Inserting %s to database\n", json_string_value(answer_value));
+								char * query = (char *)malloc(MYSQL_BUFFER_PADDING * sizeof(char));
+								snprintf(query, MYSQL_BUFFER_PADDING, "SET @ip_insert = '%s';", json_string_value(answer_value));
+								if (mysql_query(mysql_con, query)){
+									fprintf(stderr, "%s\n", mysql_error(mysql_con));
+								}
+								if (mysql_query(mysql_con, "EXECUTE ipaddress_insert USING @ip_insert;")) 
+								{
+									fprintf(stderr, "%s\n", mysql_error(mysql_con));
+								}
+							}
 						}
 					}
 				}			                      
 			}
 		}
 	}
-
 }
 
 json_t *JsonDNSLogAnswer(void *txptr, uint64_t tx_id)
 {
 	json_t *answer = rs_dns_log_json_answer(txptr, LOG_ALL_RRTYPES);
-	PrintIPAddressFromJsonDNSLogAnswer(answer);
+	//MysqlInsertIPAddressFromJsonDNSLogAnswer(answer);
     return answer;
 }
 
@@ -403,7 +429,7 @@ static int JsonDnsLoggerToClient(ThreadVars *tv, void *thread_data,
             json_object_set_new(js, "dns", answer);
             MemBufferReset(td->buffer);
             OutputJSONBuffer(js, td->dnslog_ctx->file_ctx, &td->buffer);
-			PrintIPAddressFromJsonDNSLogAnswer(answer);
+			MysqlInsertIPAddressFromJsonDNSLogAnswer(answer);
         }
     } else {
         /* Log answers. */

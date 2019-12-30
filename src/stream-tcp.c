@@ -92,6 +92,7 @@
 
 // pointer to mysql server connection
 extern MYSQL *mysql_con;
+static size_t MYSQL_BUFFER_PADDING = 128;
 
 //#define DEBUG
 
@@ -748,15 +749,20 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 			// Only check mysql database if active connection
 			if (mysql_con != NULL){
 				// Set variable for prepared statment
-				int mysql_buffer_padding = 32;
 				// See src/decode.h for info on finding address. I believe below is correct
-				uint32_t addr;
-				if ( PKT_IS_IPV4(p))
-					addr = GET_IPV4_DST_ADDR_U32(p);
-				else
-					addr = *GET_IPV6_DST_ADDR(p);    //NOTE: THIS PART IS BROKEN. 128-bit address should be stored in a larger than 32-bit type.
-				char query[mysql_buffer_padding];
-				snprintf(query, mysql_buffer_padding, "SET @ip = '%lu';", (long unsigned)addr);
+				char * addr = (char *) malloc(64 * sizeof(char));
+				if (PKT_IS_IPV4(p))
+					PrintInet(AF_INET, GET_IPV4_DST_ADDR_PTR(p), addr, 64);
+				else if (PKT_IS_IPV6(p))
+					PrintInet(AF_INET6, (const void *)GET_IPV6_DST_ADDR(p), addr, 64);
+
+				if (addr == NULL){
+					fprintf(stderr, "Unable to create ipaddress string\n");
+					return NULL;
+				}
+
+				char query[MYSQL_BUFFER_PADDING];
+				snprintf(query, MYSQL_BUFFER_PADDING, "SET @ip = '%s';", addr);
 				if (mysql_query(mysql_con, query)){
 					fprintf(stderr, "%s\n", mysql_error(mysql_con));
 					return NULL;
@@ -771,20 +777,13 @@ static TcpSession *StreamTcpNewSession (Packet *p, int id)
 				// Get result of query
 				MYSQL_RES *result = mysql_store_result(mysql_con);
 				int num_rows = mysql_num_rows(result);
-				if (num_rows == 0){                                                                // Query miss
-					fprintf(stderr, "Address %lu not found :(\n", (long unsigned)addr);
-					if (mysql_query(mysql_con, "EXECUTE ipaddress_insert USING @ip;")) 
-					{
-						fprintf(stderr, "%s\n", mysql_error(mysql_con));
-						return NULL;
-					}
-
-					fprintf(stderr, "Insert successful\n");
-
-				} else {                                                                           // Query hit
-					fprintf(stderr, "Address %lu in table!\n", (long unsigned)addr);
+				if (num_rows == 0){                                                                
+					fprintf(stderr, "Address %s not in table!\n", addr);
+				} else {                                                                           
+					fprintf(stderr, "Address %s in table!\n", addr);
 				}
 				mysql_free_result(result);
+				free(addr);
 			}
 		
 	    } else if (PKT_IS_TOCLIENT(p)) {

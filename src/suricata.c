@@ -2964,7 +2964,7 @@ void InitializeMySQLServerConnection(){
 	}
 
 	// Create table if non-existent
-	if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses (ipaddress BIGINT, PRIMARY KEY (ipaddress));")) 
+	if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses (ipaddress VARBINARY(16), PRIMARY KEY (ipaddress));")) 
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
@@ -2972,7 +2972,7 @@ void InitializeMySQLServerConnection(){
 	}
 
 	// Create memory table to speed up checks
-	if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses_mem (ipaddress BIGINT, PRIMARY KEY (ipaddress)) ENGINE = MEMORY;")) 
+	if (mysql_query(mysql_con, "CREATE TABLE IF NOT EXISTS ipaddresses_mem (ipaddress VARBINARY(16), PRIMARY KEY (ipaddress)) ENGINE = MEMORY;")) 
 	{
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
@@ -2988,25 +2988,24 @@ void InitializeMySQLServerConnection(){
 	}	
 
 	// Create prepared statments
-	if (mysql_query(mysql_con, "PREPARE ipaddress_query FROM 'SELECT * FROM ipaddresses_mem WHERE ipaddress = ?';")){
+	if (mysql_query(mysql_con, "PREPARE ipaddress_query FROM 'SELECT * FROM ipaddresses_mem WHERE ipaddress = INET6_ATON(?)';")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
 		exit(EXIT_FAILURE);
 	}
 
 	// Create prepared statments
-	if (mysql_query(mysql_con, "PREPARE ipaddress_insert FROM 'INSERT IGNORE INTO ipaddresses_mem VALUES (?)';")){
+	if (mysql_query(mysql_con, "PREPARE ipaddress_insert FROM 'INSERT IGNORE INTO ipaddresses_mem VALUES (INET6_ATON(?))';")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		mysql_close(mysql_con);
 		exit(EXIT_FAILURE);
 	}
-
 }
 
 
 int CloseMySQLServerConnection(){
 
-	// Copy new ipaddresses from ipaddresses_mem into ipaddresses for later use
+	// Copy new ipaddresses from ipaddresses_mem into ipaddresses for later use. may have an issue copying since need inet6_aton but perhaps nots
 	if (mysql_query(mysql_con, "INSERT IGNORE INTO ipaddresses (ipaddress) SELECT ipaddress FROM ipaddresses_mem;")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		return 1;
@@ -3017,6 +3016,7 @@ int CloseMySQLServerConnection(){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		return 1;
 	}
+
 	if (mysql_query(mysql_con, "DEALLOCATE PREPARE ipaddress_insert;")){
 		fprintf(stderr, "%s\n", mysql_error(mysql_con));
 		return 1;
