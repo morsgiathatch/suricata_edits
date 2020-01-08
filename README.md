@@ -1,34 +1,31 @@
 # suricata_edits
 This repo is to keep track of file changes to the Suricata library. 
 
-## Dependencies
-
-In order to use the software, you must have `mysql server` installed. To install
-on ubuntu, use:
-```bash
-sudo apt update
-sudo apt install mysql-server
-```
-There are additional installations that are recommended, however I did not use them. They are 
-```bash
-sudo mysql_secure_installation
-```
-If you install the additional software, there are prompts that let you decide how to set up `mysql-server`.
-After this, build the software below. As it stands, no passwords or users need to be set for the database
-for this project. All that is needed is root access and the hope that you do not have a databasse called `dnslookup`
-in your local mysql-server.
-
 ## Building and Running
 
-First `cd` to the Suricata root directory. Then run
+Using a VM of Ubuntu 18.04.3, run the following to get everything up and running from a fresh OS.
 ```bash
-git clone https://github.com/OISF/libhtp
+sudo apt update;
+sudo apt-get upgrade;
+sudo apt-get install libtool libpcre3-dev python3-distutils libyaml-dev libpcap0.8-dev libcap-ng-dev libnspr4-dev libnss3-dev libmagic-dev liblz4-dev libhtp-dev libz-dev libssl-dev;
+sudo apt install autoconf m4 pkg-config	pkgconf libjansson-dev rustc cargo mysql-server libmysqlclient-dev;
 ```
-This should allow the following commands to run smoothely.
+
+Even though the upgrade may take awhile, it is necessary to get an upgraded version of `sudo`. 
+After this, `cd` to the desired directory to clone the repo and run
 ```bash
-sudo ./autogen.sh; sudo ./configure; sudo make; sudo make install
+git clone https://github.com/morsgiathatch/suricata_edits.git;
+cd suricata_edits;
+git clone https://github.com/OISF/libhtp;
+
 ```
-You may need root access for a portion of the commands.
+After this, build the software.
+```bash
+sudo ./autogen.sh; 
+sudo ./configure; 
+sudo make; 
+sudo make install;
+```
 Warnings will appear when building the object files for `src/suricata.c` and
 `src/stream-tcp.c`. These are harmless for our current purposes.
 
@@ -44,39 +41,8 @@ Since I use wifi interface `wlp2s0`, I use
 sudo suricata -i wlp2s0
 
 ```
-to run and `CTRL-C` to quit. Sample output using the above is 
-```bash 
-me@mycomp:~/Desktop/suricata_edits$ sudo suricata -i wlp2s0
-[19374] 30/12/2019 -- 04:47:44 - (suricata.c:1103) <Notice> (LogVersion) -- This is Suricata version 5.0.1-dev (a37bc4f 2019-12-14) running in SYSTEM mode
-[19374] 30/12/2019 -- 04:47:44 - (detect-engine-loader.c:230) <Warning> (ProcessSigFiles) -- [ERRCODE: SC_ERR_NO_RULES(42)] - No rule files match the pattern /usr/local/etc/suricata/rules/suricata.rules
-[19374] 30/12/2019 -- 04:47:44 - (detect-engine-loader.c:345) <Warning> (SigLoadSignatures) -- [ERRCODE: SC_ERR_NO_RULES_LOADED(43)] - 1 rule files specified, but no rule was loaded at all!
-[19374] 30/12/2019 -- 04:47:44 - (util-ioctl.c:324) <Warning> (SetEthtoolValue) -- [ERRCODE: SC_ERR_SYSCALL(50)] - Failure when trying to set feature via ioctl for 'wlp2s0': Operation not supported (95)
-[19374] 30/12/2019 -- 04:47:44 - (tm-threads.c:2165) <Notice> (TmThreadWaitOnThreadInit) -- all 4 packet processing threads, 4 management threads initialized, engine started.
-Initiailizing local mysql server
-Inserting 209.197.3.24 to database
-Inserting 2001:4de0:ac19:0000:0000:0001:000b:001a to database
-Inserting 2001:4de0:ac19:0000:0000:0001:000b:001b to database
-Inserting 2001:4de0:ac19:0000:0000:0001:000b:003a to database
-Inserting 2001:4de0:ac19:0000:0000:0001:000b:002b to database
-Inserting 2001:4de0:ac19:0000:0000:0001:000b:002a to database
-Inserting 2001:4de0:ac19:0000:0000:0001:000b:003b to database
-Address 209.197.3.24 in table!
-Address 104.28.11.111 in table!
-Address 172.217.11.238 in table!
-Inserting 138.197.224.101 to database
-Address 104.28.24.86 in table!
-Address 104.28.24.86 in table!
-Address 104.28.24.86 in table!
-Address 104.28.24.86 in table!
-Address 104.28.24.86 in table!
-Address 104.28.24.86 in table!
-Address 172.217.11.238 in table!
-Inserting 172.217.214.189 to database
-Inserting 2607:f8b0:4001:0c02:0000:0000:0000:00bd to database
-^C[19374] 30/12/2019 -- 04:48:29 - (suricata.c:3039) <Notice> (SuricataMainLoop) -- Signal Received.  Stopping engine.
-[19374] 30/12/2019 -- 04:48:30 - (util-device.c:360) <Notice> (LiveDeviceListClean) -- Stats for 'wlp2s0':  pkts: 375, drop: 0 (0.00%), invalid chksum: 0
-[19374] 30/12/2019 -- 04:48:30 - (util-ioctl.c:324) <Warning> (SetEthtoolValue) -- [ERRCODE: SC_ERR_SYSCALL(50)] - Failure when trying to set feature via ioctl for 'wlp2s0': Operation not supported (95)
-```
+to run and `CTRL-C` to quit. 
+
 
 ## ipset Test
 This test looks at average insertion time in milliseconds while threads are inserting into ipsets. 
