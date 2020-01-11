@@ -3031,6 +3031,11 @@ int CloseMySQLServerConnection(){
 		return 1;
 	}
 
+	if (mysql_query(mysql_con, "DEALLOCATE PREPARE ipaddress_insert_mem;")){
+		fprintf(stderr, "%s\n", mysql_error(mysql_con));
+		return 1;
+	}
+
 	// Close mysql connection
 	mysql_close(mysql_con);
 	return 0;
