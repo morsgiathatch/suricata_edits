@@ -335,64 +335,42 @@ void MysqlInsertIPAddressFromJsonDNSLogAnswer(const Packet * p, json_t *answer){
 			if (strcmp(key, "answers") == 0 && json_typeof(value) == JSON_ARRAY){         
 				json_array_foreach(value, index, arr_value) {
 					if ((int)json_typeof(arr_value) == JSON_OBJECT){
-						char * domain = NULL;
-						char * ipaddress = NULL;
 
-						json_object_foreach(arr_value, answer_key, answer_value){
-							if (strcmp(answer_key, "rrname") == 0){
-								domain = json_string_value(answer_value);
-								continue;
-							}
+						char * ipaddress, * domain;
+						ipaddress = json_string_value(json_object_get(arr_value, "rdata"));
+						domain = json_string_value(json_object_get(arr_value, "rrname"));
 
-							if (strcmp(answer_key, "rrtype") == 0){
-								if (strcmp(json_string_value(answer_value), "A") != 0 && strcmp(json_string_value(answer_value), "AAAA") != 0){
-									ipaddress_flag = 0;
-									continue;
-								}
-								else {
-									ipaddress_flag = 1;
-									continue;
-								}
-							} 
-
-							if (strcmp(answer_key, "rdata") == 0 && ipaddress_flag == 1){
-								ipaddress = json_string_value(answer_value);
-							}
-
-							if (domain != NULL && ipaddress != NULL){
-								fprintf(stderr, "Inserting ipaddress '%s' for domain '%s' to database\n", ipaddress, domain);
-								char query[MYSQL_BUFFER_PADDING];
-								snprintf(query, MYSQL_BUFFER_PADDING, "SET @ip_insert = '%s';", ipaddress);
-								SCMutexLock(&mysql_mutex);
-								if (mysql_query(mysql_con, query)){
-									fprintf(stderr, "%s\n", mysql_error(mysql_con));
-									SCMutexUnlock(&mysql_mutex);
-									break;
-								}
-
-								snprintf(query, MYSQL_BUFFER_PADDING, "SET @dom_insert = '%s';", domain);
-								if (mysql_query(mysql_con, query)){
-									fprintf(stderr, "%s\n", mysql_error(mysql_con));
-									SCMutexUnlock(&mysql_mutex);
-									break;
-								}
-
-								if (mysql_query(mysql_con, "EXECUTE ipaddress_insert USING @ip_insert, @dom_insert;")) 
-								{
-									fprintf(stderr, "%s\n", mysql_error(mysql_con));
-									SCMutexUnlock(&mysql_mutex);
-									break;
-								}
-
-								if (mysql_query(mysql_con, "EXECUTE ipaddress_insert_mem USING @ip_insert;")) 
-								{
-									fprintf(stderr, "%s\n", mysql_error(mysql_con));
-								}
-
+						if (domain != NULL && ipaddress != NULL){
+							fprintf(stderr, "Inserting ipaddress '%s' for domain '%s' to database\n", ipaddress, domain);
+							char query[MYSQL_BUFFER_PADDING];
+							snprintf(query, MYSQL_BUFFER_PADDING, "SET @ip_insert = '%s';", ipaddress);
+							SCMutexLock(&mysql_mutex);
+							if (mysql_query(mysql_con, query)){
+								fprintf(stderr, "%s\n", mysql_error(mysql_con));
 								SCMutexUnlock(&mysql_mutex);
 								break;
 							}
 
+							snprintf(query, MYSQL_BUFFER_PADDING, "SET @dom_insert = '%s';", domain);
+							if (mysql_query(mysql_con, query)){
+								fprintf(stderr, "%s\n", mysql_error(mysql_con));
+								SCMutexUnlock(&mysql_mutex);
+								break;
+							}
+
+							if (mysql_query(mysql_con, "EXECUTE ipaddress_insert USING @ip_insert, @dom_insert;")) 
+							{
+								fprintf(stderr, "%s\n", mysql_error(mysql_con));
+								SCMutexUnlock(&mysql_mutex);
+								break;
+							}
+
+							if (mysql_query(mysql_con, "EXECUTE ipaddress_insert_mem USING @ip_insert;")) 
+							{
+								fprintf(stderr, "%s\n", mysql_error(mysql_con));
+							}
+
+							SCMutexUnlock(&mysql_mutex);
 						}
 					}
 				}			                      
