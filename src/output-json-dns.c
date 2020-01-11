@@ -336,7 +336,12 @@ void MysqlInsertIPAddressFromJsonDNSLogAnswer(const Packet * p, json_t *answer){
 				json_array_foreach(value, index, arr_value) {
 					if ((int)json_typeof(arr_value) == JSON_OBJECT){
 
-						char * ipaddress, * domain;
+						char * ipaddress, * domain, * type;
+						type = json_string_value(json_object_get(arr_value, "rrtype"));	
+
+						if (strcmp(type, "AAAA") != 0 && strcmp(type, "A") != 0)
+							continue; 
+
 						ipaddress = json_string_value(json_object_get(arr_value, "rdata"));
 						domain = json_string_value(json_object_get(arr_value, "rrname"));
 
