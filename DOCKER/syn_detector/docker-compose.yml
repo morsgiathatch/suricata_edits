@@ -1,0 +1,13 @@
+version: '2'
+
+services:
+
+  suricata_mod:
+    build: ./${syn_detector}/Dockerfile/
+    container_name: syn_detector
+    cap_add:
+      - NET_ADMIN
+    network_mode: "host"
+    volumes:
+      - /var/log/suricata:/var/log/suricata
+    entrypoint: /tmp/docker-entrypoint.sh
